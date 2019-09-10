@@ -1,0 +1,4 @@
+figures
+*.pyc
+__pycache__
+*.egg-info
