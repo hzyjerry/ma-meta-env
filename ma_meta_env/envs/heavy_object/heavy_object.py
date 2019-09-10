@@ -264,6 +264,7 @@ class HeavyObjectEnv(gym.Env):
         # Get reward
         new_cx, new_cy, new_angle = self._get_new_state(actions)
         rew = self.action_reward(actions)
+        rews = [rew] * self.num_agents
         advs = [rew] * self.num_agents
         if acts is not None:
             advs = self.current_adv_counterfactual(actions, acts=acts)
@@ -272,6 +273,7 @@ class HeavyObjectEnv(gym.Env):
         self._state = np.array([new_cx, new_cy, new_angle])
         self._step_count += 1
         done = False
+        dones = [done] * self.num_agents
         obs = self._get_obs()
         self._total_reward += rew
         self._last_actions = actions
@@ -279,7 +281,7 @@ class HeavyObjectEnv(gym.Env):
         info = {"goal": self.goal, "rew_shaped": [0] * self.num_agents}
         for i in range(self.num_agents):
             info["rew_shaped"][i] = np.float32(advs[i])
-        return obs, rew, done, info
+        return obs, rews, dones, info
 
     def current_adv_counterfactual(self, actions, acts=None):
         """ Use counterfactual reward as proxy for counterfactual advantage """
