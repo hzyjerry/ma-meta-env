@@ -10,14 +10,13 @@ def run_env(fix_goal, num_agents):
     acs_space = env.action_space
     total_reward = 0
     while True:
-        ac = np.array([[8, 0.5]] * env.num_agents)
+        #ac = np.array([[8, 0.5]] * env.num_agents)
+        ac = np.array([ac_space.sample() for ac_space in acs_space])
         ob, rew, done, _ = env.step(ac)
         env.render()
         step += 1
-        total_reward += rew
-        if done:
-            print("step {} total {}".format(step, total_reward))
-            break
+        if done[0]:
+            total_reward += rew[0]
 
 
 if __name__ == "__main__":

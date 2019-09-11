@@ -32,6 +32,7 @@ class HeavyObjectEnv(gym.Env):
         fix_dist=None,
         num_agents=2,
         centralized=False,
+        max_episode_steps=20,
     ):
         # Properties
         self.observable_target = observable_target
@@ -41,6 +42,7 @@ class HeavyObjectEnv(gym.Env):
         self.goal = goal
         self.fix_goal = fix_goal
         self.fix_dist = fix_dist
+        self._max_episode_steps=max_episode_steps
 
         # Environment & Episode settings
         self.map_W = 10.0
@@ -237,7 +239,7 @@ class HeavyObjectEnv(gym.Env):
             obs = np.concatenate([obs, goal_obs], axis=1)
         return obs.astype(np.float32)
 
-    def action_reward(self, actions):
+    def _action_reward(self, actions):
         assert actions is not None
         new_state = self._get_new_state(actions)
         rew = self._get_reward(new_state)
@@ -256,18 +258,19 @@ class HeavyObjectEnv(gym.Env):
     def _clip_actions(self, actions):
         return np.clip(actions, self.action_low, self.action_high)
 
-    def step(self, actions, acts=None, probs=None):
+    def step(self, actions, **kwargs):
         # Book keeping
         actions = self._clip_actions(np.array(actions))
         self._last_state = self._state
 
         # Get reward
         new_cx, new_cy, new_angle = self._get_new_state(actions)
-        rew = self.action_reward(actions)
+        rew = self._action_reward(actions)
         rews = [rew] * self.num_agents
-        advs = [rew] * self.num_agents
-        if acts is not None:
-            advs = self.current_adv_counterfactual(actions, acts=acts)
+        marginalized_rews = [rew] * self.num_agents
+        if "additional_actions" in kwargs.keys():
+            acts = kwargs["additional_actions"]
+            marginalized_rews = self._get_marginalized_reward(actions, acts=acts)
 
         # Update state
         self._state = np.array([new_cx, new_cy, new_angle])
@@ -278,34 +281,36 @@ class HeavyObjectEnv(gym.Env):
         self._total_reward += rew
         self._last_actions = actions
 
-        info = {"goal": self.goal, "rew_shaped": [0] * self.num_agents}
+        info = {"goal": self.goal, "marginalized_rews": [0] * self.num_agents}
         for i in range(self.num_agents):
-            info["rew_shaped"][i] = np.float32(advs[i])
+            info["marginalized_rews"][i] = np.float32(marginalized_rews[i])
         return obs, rews, dones, info
 
-    def current_adv_counterfactual(self, actions, acts=None):
-        """ Use counterfactual reward as proxy for counterfactual advantage """
+    def _get_marginalized_reward(self, actions, acts=None):
+        """ Use additional actions to marginalize out current reward
+
+        Params
+        : acs : (n_agent, n_additional, act_dim)
+        """
         debug = False
-        rew = self.action_reward(actions)
+        rew = self._action_reward(actions)
         rews = [rew] * self.num_agents
-        if acts is not None:
-            for agent_i, actsi in enumerate(acts):
-                counter_rews = []
-                for ai in actsi:
-                    new_a = np.array(actions, copy=True)
-                    new_a[agent_i] = ai
-                    a_value = self.action_reward(new_a)
-                    if debug:
-                        print(
-                            " Agent({}) A:{} aval:{}/{}".format(
-                                agent_i, ai, a_value, len(actsi)
-                            )
-                        )
-                    counter_rews.append(a_value)
-                    # rews[agent_i] -= a_value / len(actsi)
-                # print(" Agent({}) rew:{:.4f} mean:{:.4f} std:{:.4f}".format(agent_i, rews[agent_i], np.mean(counter_rews), np.std(counter_rews)))
-                rews[agent_i] -= np.mean(counter_rews)
-        # print("advs", rews)
+        assert len(acts) == self.num_agents
+        for agent_i, acts_i in enumerate(acts):
+            # Each agent
+            marginalized_rews = []
+            for act_i in acts_i:
+                # Each additional action
+                new_a = np.array(actions, copy=True)
+                new_a[agent_i] = act_i
+                a_value = self._action_reward(new_a)
+                if debug:
+                    print(
+                        f"Agent({agent_i}) Act:{act_i} val:{a_value}/{len(acts_i)}"
+                    )
+                marginalized_rews.append(a_value)
+
+            rews[agent_i] -= np.mean(marginalized_rews)
         return rews
 
     def _convert_f_xyr(self, state, actions):
