@@ -249,8 +249,8 @@ class HeavyObjectEnv(gym.Env):
         if state is None:
             state = self._state
         xs, ys, gxs, gys, _, _ = self.get_pos_gpos(state=state)
-        total_dist = np.sum(np.sqrt(np.square(xs - gxs) + np.square(ys - gys)))
-        current_value = -np.mean(total_dist)
+        dists = np.sqrt(np.square(xs - gxs) + np.square(ys - gys))
+        current_value = -np.mean(dists)
         self._last_value = current_value
         reward = current_value
         return reward
@@ -275,7 +275,7 @@ class HeavyObjectEnv(gym.Env):
         # Update state
         self._state = np.array([new_cx, new_cy, new_angle])
         self._step_count += 1
-        done = False
+        done = self._step_count > self._max_episode_steps
         dones = [done] * self.num_agents
         obs = self._get_obs()
         self._total_reward += rew
