@@ -42,7 +42,7 @@ class HeavyObjectEnv(gym.Env):
         self.goal = goal
         self.fix_goal = fix_goal
         self.fix_dist = fix_dist
-        self._max_episode_steps=max_episode_steps
+        self._max_episode_steps = max_episode_steps
 
         # Environment & Episode settings
         self.map_W = 10.0
@@ -86,6 +86,10 @@ class HeavyObjectEnv(gym.Env):
         if self.observable_target:
             self.obs_low = np.concatenate([self.obs_low, self.obs_low])
             self.obs_high = np.concatenate([self.obs_high, self.obs_high])
+
+        # Sample one goal and keep it fixed
+        if self.goal is None:
+            self.goal = self.sample_goals(1)[0]
 
     def get_angle_offsets(self):
         """ Map one angle to three angles """
@@ -158,7 +162,7 @@ class HeavyObjectEnv(gym.Env):
             )
         return pair
 
-    def generate_default_goal(self):
+    def generate_default_start(self):
         return [0, 0, 0]
 
     def sample_paper_goals(self):
@@ -218,10 +222,9 @@ class HeavyObjectEnv(gym.Env):
     def reset_goal(self, goal):
         self.goal = goal
 
-    def reset(self, goal=None):
-        self.goal = goal if goal is not None else self.sample_goals(1)[0]
+    def reset(self):
         self._state = np.zeros((3,), dtype=np.float32)
-        self._state[:3] = self.generate_default_goal()
+        self._state[:3] = self.generate_default_start()
         self._last_value = 0
         self._step_count = 0
         self._total_reward = 0
@@ -299,18 +302,23 @@ class HeavyObjectEnv(gym.Env):
         for agent_i, acts_i in enumerate(acts):
             # Each agent
             marginalized_rews = []
-            for act_i in acts_i:
+            if debug:
+                print(f" Agent({agent_i}) old:{rew:.4f}")
+            for a_i, act_i in enumerate(acts_i):
                 # Each additional action
                 new_a = np.array(actions, copy=True)
                 new_a[agent_i] = act_i
                 a_value = self._action_reward(new_a)
                 if debug:
                     print(
-                        f"Agent({agent_i}) Act:{act_i} val:{a_value}/{len(acts_i)}"
+                        f" Agent({agent_i}) Act:{a_i} val:{a_value:.4f}/{len(acts_i)}"
                     )
                 marginalized_rews.append(a_value)
-
             rews[agent_i] -= np.mean(marginalized_rews)
+            if debug:
+                print(
+                    f" Agent({agent_i}) rew:{rews[agent_i]:.4f} mean:{np.mean(marginalized_rews):.4f} std:{np.std(marginalized_rews):.4f}"
+                )
         return rews
 
     def _convert_f_xyr(self, state, actions):
